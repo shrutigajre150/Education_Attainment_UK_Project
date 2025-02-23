@@ -1,0 +1,343 @@
+---
+title: "DAP test"
+author: "Dania Usman"
+date: "2024-11-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+```{r}
+
+library(tidyverse)
+eng_ed <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2024/2024-01-23/english_education.csv')
+
+
+```
+
+
+# Data Cleaning
+
+
+```{r}
+
+#selecting useful columns and changing variable names
+
+eng_ed <- eng_ed |> 
+  select(town11nm, size_flag, income_flag, university_flag,
+         level4qual_residents35_64_2011,
+         key_stage_4_attainment_school_year_2012_to_2013,
+         highest_level_qualification_achieved_by_age_22_level_6_or_above,
+         ) |> 
+    mutate(
+    size_flag = factor(size_flag),
+    income_flag = factor(income_flag),
+    uni_flag= factor(university_flag),
+    qual_residents=factor(level4qual_residents35_64_2011),
+    GCSEs=key_stage_4_attainment_school_year_2012_to_2013,
+    college_grad =  highest_level_qualification_achieved_by_age_22_level_6_or_above
+   ) 
+
+#removing repeat columns
+
+eng_ed <- eng_ed |> 
+  select(town11nm, size_flag, income_flag, uni_flag,qual_residents, 
+                 GCSEs, college_grad   )
+
+glimpse(eng_ed)
+summary(eng_ed)
+
+
+
+```
+
+```{r}
+
+
+#factor collapse to combine mid and large size towns and cities into one level
+#ignored london as other
+levels(eng_ed$size_flag)
+eng_ed<- eng_ed |>
+mutate(size_flag = fct_collapse(size_flag,
+Large = c("City", "Medium Towns", "Large Towns", "Outer london BUA", "Inner London BUA", "Not BUA"),
+Small = c("Small Towns",  "Other Small BUAs")
+)) 
+
+
+
+barplot(table(eng_ed$size_flag), las = 2) #distribution of the size_flag
+```
+
+
+# High School Graduation Rates small vlarge towns
+
+Is there a difference in high school graduation rates between small v large towns/cities?
+H0: There is no mean difference between the high school graduation rates  between small v large towns/cities
+H1: There is a difference  between the high school graduation rates  between small v large towns/cities
+Test: Difference between two means
+
+##Conditions
+
+Independence: We can assume the observations of one town to another are independent from each other.
+
+
+```{r}
+small_town <- eng_ed |> 
+  filter(size_flag == "Small") #filtered data by small town
+
+large_town <- eng_ed |> 
+  filter(size_flag == "Large") #filtered data by large town
+
+hist(small_town$GCSEs)
+
+#look normal
+
+hist(large_town$GCSEs)
+
+
+#look normal
+
+nrow(small_town)
+nrow(large_town)
+
+```
+
+
+# Power Analysis
+
+```{r}
+library(pwr)
+
+mean_small_gcse <- mean(small_town$GCSEs, na.rm = TRUE)
+mean_large_gcse <- mean(large_town$GCSEs, na.rm = TRUE)
+
+sd_pooled_gcse <- sqrt((
+  (sd(small_town$GCSEs, na.rm = TRUE)^2 + sd(large_town$GCSEs, na.rm = TRUE)^2) / 2
+))
+
+# Cohen's d (effect size)
+cohens_d_gcse <- abs(mean_small_gcse - mean_large_gcse) / sd_pooled_gcse
+
+# Sample size
+n_small <- nrow(small_town)
+n_large <- nrow(large_town)
+
+# Power analysis
+power_gcse <- pwr.t.test(
+  d = cohens_d_gcse,   
+  n = min(n_small, n_large), 
+  sig.level = 0.05,   
+  type = "two.sample" 
+)$power
+
+cat("Observed Cohen's d (Effect Size):", round(cohens_d_gcse, 3), "\n")
+cat("Sample size (Small Towns):", n_small, "\n")
+cat("Sample size (Large Towns):", n_large, "\n")
+cat("Computed Power for GCSE Difference Test:", round(power_gcse, 3), "\n")
+
+```
+
+
+## Test for diff in mean
+
+```{r}
+t_test_result <- t.test(small_town$GCSEs, large_town$GCSEs)
+cat("T-test Result: \n")
+print(t_test_result)
+```
+
+
+Decision: The p-value is less than 0.05, we reject the null hypothesis
+
+Conclusion: We have enough evidence that there is a significant difference in high school graduation rates between small towns and large towns/cities.
+
+
+# Colleg Graduation Rates small vlarge towns
+
+Is there a difference in college graduation rates between small  v large towns/cities?
+H0: There is no difference in college graduation rates between small vs large towns/cities.
+H1: There is a difference in college graduation rate between small vs large towns/cities.
+Test: Difference between two means
+
+## Conditions
+```{r}
+hist(small_town$college_grad)
+hist(large_town$college_grad)
+```
+
+## Power Analysis
+
+```{r}
+mean_small_college <- mean(small_town$college_grad, na.rm = TRUE)
+mean_large_college <- mean(large_town$college_grad, na.rm = TRUE)
+
+sd_pooled_college <- sqrt((
+  (sd(small_town$college_grad, na.rm = TRUE)^2 + sd(large_town$college_grad, na.rm = TRUE)^2) / 2
+))
+
+# Cohen's d (effect size)
+cohens_d_college <- abs(mean_small_college - mean_large_college) / sd_pooled_college
+
+# Power analysis for two-sample t-test
+power_college <- pwr.t.test(
+  d = cohens_d_college,   
+  n = min(n_small, n_large), 
+  sig.level = 0.05,       
+  type = "two.sample"     
+)$power
+
+cat("Observed Cohen's d (Effect Size):", round(cohens_d_college, 3), "\n")
+cat("Sample size (Small Towns):", n_small, "\n")
+cat("Sample size (Large Towns):", n_large, "\n")
+cat("Computed Power for College Graduation Difference Test:", round(power_college, 3), "\n")
+
+
+```
+
+
+## test for diff in means
+
+```{r}
+t_test_college_grad <- t.test(small_town$college_grad, large_town$college_grad)
+cat("T-test Results for College Graduation Rates: \n")
+print(t_test_college_grad)
+```
+
+Decision: The p-value is less than 0.05, we reject the null hypothesis
+
+Conclusion: We enough evidence that there is a difference in college graduation rate between small vs large towns/cities.
+
+
+
+
+#Are income and town size assoicated
+
+Independence: 
+
+```{r}
+test <- chisq.test(eng_ed$income_flag, eng_ed$size_flag)
+cat("Expected counts:", test$expected)
+test
+
+```
+
+All counts are greater than 5. 
+
+p value is smaller than 0.05. Income and town size are associated. 
+
+
+##Power Analysis
+
+```{r}
+chisq_test <- chisq.test(eng_ed$size_flag, eng_ed$income_flag)
+
+income_size_table <- table(eng_ed$size_flag, eng_ed$income_flag)
+
+# Calculate Cramér's V
+cramers_v <- sqrt(chisq_test$statistic / (sum(income_size_table) * (min(dim(income_size_table)) - 1)))
+
+
+# Df
+df <- chisq_test$parameter
+
+# Total sample size
+n_total <- sum(income_size_table)
+
+# Compute power for chi-squared test
+power_chisq <- pwr.chisq.test(
+  w = cramers_v,  
+  N = n_total,  
+  df = df,       
+  sig.level = 0.05  
+)$power
+
+cat("Observed Cramér's V (Effect Size):", round(cramers_v, 3), "\n")
+cat("Degrees of Freedom:", df, "\n")
+cat("Total Sample Size:", n_total, "\n")
+cat("Computed Power for Chi-Squared Test:", round(power_chisq, 3), "\n")
+```
+
+# Conditions for linear regression
+
+H0: There is no linear relationship between high school and college completion.
+H1: There is a linear relationship between high school and college completion.
+Test: Linear Regression
+
+```{r}
+
+#Linearity
+
+ggplot(data = eng_ed, aes(x = GCSEs, y = college_grad)) +
+geom_point() +
+geom_smooth(method =lm, se =F)
+
+
+#Independence
+
+mod<- lm(college_grad ~ GCSEs, data =eng_ed)
+plot(predict(mod), rstandard(mod))
+abline(h=0)
+summary(mod)
+
+#constant variance
+#normality 
+plot(mod) 
+
+```
+
+
+## Power Analysis
+
+```{r}
+
+r_squared <- summary(mod)$r.squared
+
+# Size (Cohen's f2)
+f2 <- r_squared / (1 - r_squared)
+
+n <- nrow(eng_ed) 
+num_predictors <- 1
+
+# Power analysis 
+power_regression <- pwr.f2.test(
+  u = num_predictors, 
+  v = n - num_predictors - 1,
+  f2 = f2,  
+  sig.level = 0.05 
+)$power
+
+
+cat("R-squared (Goodness-of-Fit):", round(r_squared, 3), "\n")
+cat("Effect Size (Cohen's f²):", round(f2, 3), "\n")
+cat("Sample Size:", n, "\n")
+cat("Computed Power for Regression Test:", round(power_regression, 3), "\n")
+```
+
+
+Does having a university in town affect avg proportion of college grad? (diff in mean)
+
+H0:No difference in avg proportion of college grad between univeristy towns and towns with no university
+HA: There is a diff. 
+
+Additional Analyses
+
+```{r}
+uni_town <- eng_ed |> 
+  filter(uni_flag == "University") #filtered data by small town
+nrow(uni_town)
+
+no_uni_town <- eng_ed |> 
+  filter(uni_flag == "No university") #filtered data by small town
+nrow(no_uni_town) 
+
+
+t.test(uni_town$college_grad, no_uni_town$college_grad)
+t.test(uni_town$GCSEs, no_uni_town$GCSEs)
+
+```
+p value high. There is no difference in high school and college grad rates between uni towns and non uni towns. 
+
+
+
